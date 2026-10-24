@@ -1,0 +1,18 @@
+Context Forge
+Copyright 2026 Brightline IP
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components (installed separately by install.ps1 from PyPI and npm under their own licenses):
+  Python: pypdf (BSD-3-Clause), python-docx (MIT), openpyxl (MIT), et_xmlfile (MIT), python-pptx (MIT),
+          XlsxWriter (BSD-2-Clause), defusedxml (PSF-2.0), lxml (BSD-3-Clause), Pillow (MIT-CMU/HPND),
+          typing_extensions (PSF-2.0)
+  Node:   @modelcontextprotocol/sdk (MIT), zod (MIT), and their dependencies as pinned in
+          integrations/mcp/package-lock.json
+Check each package's license for the exact version you install.
+
+Scanned-PDF OCR uses the Windows.Media.Ocr engine and PDF renderer built into Windows; they are subject
+to your Windows license and are not redistributed. Optional enrichment talks to an Ollama server you run
+yourself; Ollama and any model you pull are governed by their own licenses and terms.
+
+The test fixtures in test-fixtures/ are synthetic; all names, numbers and text are invented.

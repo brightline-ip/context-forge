@@ -1,0 +1,7 @@
+Context Forge reliability test
+
+Project Atlas uses deterministic extraction before optional language-model enrichment.
+The normalized output must preserve this sentence and its source provenance.
+
+If local Qwen is unavailable, extraction must still complete successfully.
+

@@ -1,0 +1,9 @@
+{
+  "project": "Atlas",
+  "priority": "reliable preprocessing",
+  "requirements": [
+    "preserve provenance",
+    "isolate per-file failures",
+    "make enrichment optional"
+  ]
+}

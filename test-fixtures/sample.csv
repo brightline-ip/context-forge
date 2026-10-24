@@ -1,0 +1,4 @@
+item,status,owner
+deterministic extraction,required,Context Forge
+optional enrichment,enabled,Qwen
+frontier handoff,ready,Agent
