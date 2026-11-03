@@ -34,7 +34,13 @@ if (-not $Apply) {
     [pscustomobject]@{Applied=$false;AlreadyInitialized=$false;TokenFile=$tokenFile;ApprovedPrincipals=$approved.Count} | ConvertTo-Json
     exit 0
 }
-if (@(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue).Count) {
+# Refuse only while THIS installation's service runs (its .venv interpreter); another program on port 8765,
+# or a Context Forge installed elsewhere on another port, is not affected by this installation's token.
+$ownVenv = Join-Path $root '.venv\Scripts\'
+$running = @(Get-CimInstance Win32_Process -Filter "Name like 'python%'" -ErrorAction SilentlyContinue | Where-Object {
+    $_.ExecutablePath -and $_.ExecutablePath.StartsWith($ownVenv, [StringComparison]::OrdinalIgnoreCase) -and $_.CommandLine -match 'context_forge\.server'
+})
+if ($running.Count) {
     throw 'Stop the Context Forge service before initializing authentication.'
 }
 
@@ -58,7 +64,9 @@ $bytes = [byte[]]::new(32)
 try {
     if (-not (Test-Path -LiteralPath $securityDir)) { $null = New-Item -ItemType Directory -Path $securityDir }
     Set-Acl -LiteralPath $securityDir -AclObject (New-ProtectedAcl $true)
-    [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    # RandomNumberGenerator.Fill does not exist in Windows PowerShell 5.1 (.NET Framework).
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
     $token = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
     $temporary = Join-Path $securityDir ('.service-token-' + [guid]::NewGuid().ToString('N') + '.tmp')
     [IO.File]::WriteAllText($temporary, $token, [Text.UTF8Encoding]::new($false))
