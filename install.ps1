@@ -27,7 +27,8 @@ function Find-Python([string]$Requested) {
         $exe = $c[0]
         $extra = @($c | Select-Object -Skip 1)
         if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
-        try { $v = (& $exe @extra -c 'import sys;print("%d.%d" % sys.version_info[:2])' 2>$null) } catch { continue }
+        # No double quotes in arguments: Windows PowerShell 5.1 strips them when calling native programs.
+        try { $v = (& $exe @extra -c 'import sys;print(sys.version_info[0],sys.version_info[1],sep=chr(46))' 2>$null) } catch { continue }
         if ($v -match '^(\d+)\.(\d+)$' -and ([int]$Matches[1] -gt 3 -or ([int]$Matches[1] -eq 3 -and [int]$Matches[2] -ge 12))) {
             return @{ Exe = $exe; Extra = $extra }
         }
@@ -49,7 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Installing Python dependencies failed.' }
 $node = (Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 if (-not $SkipNode) {
     if (-not $node) { throw 'Node.js 20 or later was not found. Install it from https://nodejs.org/ or re-run with -SkipNode (no MCP server or CLI).' }
-    $major = [int](& $node -p 'process.versions.node.split(".")[0]')
+    $major = [int]((& $node -p 'process.versions.node').Split('.')[0])
     if ($major -lt 20) { throw "Node.js 20 or later is required (found $major)." }
     $npm = (Get-Command npm.cmd, npm -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
     Write-Host 'Installing pinned Node packages (integrations/mcp/package-lock.json)'
