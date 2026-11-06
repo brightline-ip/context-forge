@@ -6,17 +6,20 @@ import re
 import shutil
 import sqlite3
 import threading
+import time
 import sys
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .audit import append_event
 from .enrich import enrich
 from .extractors import Extraction, Section
 from .artifacts import (ARTIFACT_SCHEMA_VERSION, ArtifactIntegrityError, build_artifacts,
                         validate_artifacts, write_artifacts)
 from .normalize import normalize, salience_pack
+from .ocr_crosscheck import check_recognized_pages, conflict_pages
 from .publication import JOURNAL_SCHEMA_VERSION, PublicationError, PublicationJournal, atomic_write_json
 from .safety import BusyError, InputError, MAX_FILES, MAX_TEXT_CHARS, safe_error, validate_file
 from .worker_runtime import WorkerRuntimeError, read_extraction_output, run_extraction_worker
@@ -51,6 +54,10 @@ def validate_document_package(directory: Path, manifest: dict) -> None:
         raise ArtifactIntegrityError("archived original failed integrity validation")
 
 
+MAX_ACTIVE_JOBS = 2
+MAX_WAITING_JOBS = 8
+
+
 def quality_status(manifest: dict) -> tuple[str, list[str]]:
     """Report extraction quality separately from the processing lifecycle."""
     if manifest.get("format") != ".pdf":
@@ -65,11 +72,31 @@ def quality_status(manifest: dict) -> tuple[str, list[str]]:
         reasons.append("blank_or_failed_ocr_pages")
     if ocr.get("recognized_pages"):
         reasons.append("unverified_ocr_text")
+    if conflict_pages(metadata.get("ocr_numeric_check")):
+        reasons.append("ocr_numeric_disagreement")
     if metadata.get("pdf_layout_pages"):
         reasons.append("layout_sensitive_native_text")
     if metadata.get("pdf_layout_risk_pages"):
         reasons.append("layout_extraction_rejected")
     return ("needs_review", reasons) if reasons else ("ready", [])
+
+
+def quality_tier(manifest: dict) -> str:
+    """Which review a document needs. quality_status keeps its values for existing consumers,
+    but says needs_review for every OCR page; this separates clean OCR from real problems."""
+    if manifest.get("format") != ".pdf":
+        return "ready"
+    metadata = manifest.get("metadata", {})
+    ocr = metadata.get("ocr", {})
+    if ocr.get("pending_pages"):
+        return "incomplete"
+    if ocr.get("unresolved_pages"):
+        return "ocr_problems"
+    if conflict_pages(metadata.get("ocr_numeric_check")):
+        return "ocr_numbers_disputed"
+    if metadata.get("pdf_layout_pages") or metadata.get("pdf_layout_risk_pages"):
+        return "layout_review"
+    return "ocr_unverified" if ocr.get("recognized_pages") else "ready"
 
 
 class Store:
@@ -132,7 +159,8 @@ class Pipeline:
         self.root = root
         self.settings = settings
         self.store = Store(root / "data" / "context-forge.sqlite3")
-        self.slots = threading.BoundedSemaphore(2)
+        self.slots = threading.BoundedSemaphore(MAX_ACTIVE_JOBS)
+        self.capacity = threading.BoundedSemaphore(MAX_ACTIVE_JOBS + MAX_WAITING_JOBS)
         self.threads = set()
         self.thread_lock = threading.Lock()
         self.resume_lock = threading.Lock()
@@ -184,8 +212,8 @@ class Pipeline:
             raise InputError("A job must contain 1-100 distinct files")
         if sum(p.stat().st_size for p in paths) > 500 * 1024 * 1024:
             raise InputError("Total job input exceeds 500 MiB")
-        if not self.slots.acquire(blocking=False):
-            raise BusyError("Two jobs are already active; poll them before submitting another job")
+        if not self.capacity.acquire(blocking=False):
+            raise BusyError(f"{MAX_ACTIVE_JOBS} jobs are running and {MAX_WAITING_JOBS} are waiting; poll them before submitting another job")
         job_id = uuid.uuid4().hex[:12]
         options = {"enrich": enrich_with_qwen, "normalization_mode": normalization_mode}
         if bound_request:
@@ -210,7 +238,7 @@ class Pipeline:
             with self.thread_lock:
                 if 'worker' in locals():
                     self.threads.discard(worker)
-            self.slots.release()
+            self.capacity.release()
             self.store.execute("UPDATE jobs SET status='failed',error='Worker startup failed',updated_at=? WHERE id=?", (now(), job_id))
             raise
         return job_id
@@ -240,6 +268,7 @@ class Pipeline:
                                    normalization_mode='lossless', resumed_from=document_id)
 
     def _run(self, job_id: str, paths: list[Path], options: dict, cleanup_root: Path | None, settings: dict) -> None:
+        self.slots.acquire()  # the job stays 'queued' until a slot is free
         try:
             self._run_batch(job_id, paths, options, cleanup_root, settings)
         except Exception as exc:
@@ -254,6 +283,7 @@ class Pipeline:
             with self.thread_lock:
                 self.threads.discard(threading.current_thread())
             self.slots.release()
+            self.capacity.release()
 
     def _run_batch(self, job_id: str, paths: list[Path], options: dict, cleanup_root: Path | None, settings: dict) -> None:
         output_root = Path(settings["output_dir"]).resolve()
@@ -305,6 +335,7 @@ class Pipeline:
             raise InputError('Source changed after bound request acceptance')
         if shutil.disk_usage(batch_dir).free < source.stat().st_size * 3 + 100 * 1024 * 1024:
             raise InputError("Insufficient free disk space for safe processing")
+        started = time.monotonic()
         source_stat = source.stat()
         document_dir, published_dir = self.publications.reserve(publication_id, job_id, source, batch_dir,
                                                                  safe_name(source.stem))
@@ -323,20 +354,37 @@ class Pipeline:
             checkpoint_root = self.root / 'data' / 'ocr-progress' / CHECKPOINT_VERSION
             checkpoint_root.mkdir(parents=True, exist_ok=True)
             checkpoint_args = ['--ocr-checkpoint', str(checkpoint_root / (digest + '.sqlite3'))]
-        try:
-            extraction_path.unlink(missing_ok=True)
-            runtime = run_extraction_worker(Path(sys.executable),
-                                            [str(original), str(extraction_path), *checkpoint_args],
-                                            Path(__file__).resolve().parents[1], document_dir, 120)
-            result = read_extraction_output(extraction_path, MAX_TEXT_CHARS * 8)
-            extraction = Extraction([Section(**s) for s in result["sections"]], result["metadata"], result["warnings"])
-            extraction.metadata["worker_runtime"] = runtime.metadata()
-        except WorkerRuntimeError as exc:
-            if exc.code == "timeout":
-                raise InputError("Extraction exceeded the 120-second limit; worker tree was stopped") from exc
-            raise InputError("Extraction worker failed resource or output validation") from exc
-        finally:
-            extraction_path.unlink(missing_ok=True)
+        timed_out = False
+        while True:
+            try:
+                extraction_path.unlink(missing_ok=True)
+                runtime = run_extraction_worker(Path(sys.executable),
+                                                [str(original), str(extraction_path), *checkpoint_args],
+                                                Path(__file__).resolve().parents[1], document_dir, 120)
+                result = read_extraction_output(extraction_path, MAX_TEXT_CHARS * 8)
+                extraction = Extraction([Section(**s) for s in result["sections"]], result["metadata"], result["warnings"])
+                extraction.metadata["worker_runtime"] = runtime.metadata()
+                break
+            except WorkerRuntimeError as exc:
+                if exc.code == "timeout" and not timed_out:
+                    # Usually a busy machine; OCR checkpoints mean the retry resumes rather than restarts.
+                    timed_out = True
+                    append_event(self.root / "data" / "intake-audit.jsonl", {"event": "extraction_timeout_retried", "job_id": job_id, "format": source.suffix.lower()})
+                    continue
+                if exc.code == "timeout":
+                    raise InputError("Extraction exceeded the 120-second limit twice; worker tree was stopped. Submit the file again when the machine is less busy") from exc
+                raise InputError("Extraction worker failed resource or output validation") from exc
+            finally:
+                extraction_path.unlink(missing_ok=True)
+        if timed_out:
+            extraction.warnings.append("Extraction timed out once and succeeded on an automatic retry.")
+        numeric_check = check_recognized_pages(original, extraction, document_dir,
+                                               cache_path=self.root / 'data' / 'ocr-progress' / 'numeric-check-v1' / (digest + '.json'))
+        if numeric_check:
+            extraction.metadata["ocr_numeric_check"] = numeric_check
+            pages = conflict_pages(numeric_check)
+            if pages:
+                extraction.warnings.append(f"Two OCR engines read different numbers on page(s) {', '.join(map(str, pages))}; check dates and citations there against the original image.")
         extraction = normalize(extraction, mode=normalization_mode)
         try:
             artifacts = build_artifacts(extraction, source.name, int(settings.get("chunk_chars", 6000)),
@@ -390,6 +438,7 @@ class Pipeline:
             "chunk_chars": artifacts.target_chars,
             "chunk_overlap_chars": artifacts.overlap_chars,
             "artifact_hashes": artifacts.artifact_hashes,
+            "processing_seconds": round(time.monotonic() - started, 1),
             "enrichment": "completed" if enrichment else ("failed" if enrichment_error else "disabled"),
             "enrichment_error": enrichment_error,
             "enrichment_attempts": enrichment_attempts,
@@ -432,6 +481,8 @@ class Pipeline:
                 item['ocr'] = details.get('metadata', {}).get('ocr')
                 item['ocr_summary'] = (item['ocr'] or {}).get('summary')
                 item['quality_status'], item['quality_reasons'] = quality_status(details)
+                item['quality_tier'] = quality_tier(details)
+                item['ocr_numeric_check'] = details.get('metadata', {}).get('ocr_numeric_check')
         # check_available can transactionally revoke a publication and update the
         # parent job.  Return that same-call authoritative projection.
         with self.store.lock, self.store.connect() as db:
@@ -462,6 +513,7 @@ class Pipeline:
         except PublicationError as exc:
             raise InputError("Document publication is unavailable; inspect its job") from exc
         manifest["quality_status"], manifest["quality_reasons"] = quality_status(manifest)
+        manifest["quality_tier"] = quality_tier(manifest)
         chunks = []
         with (Path(row["output_dir"]) / "chunks.jsonl").open(encoding="utf-8") as stream:
             for index, line in enumerate(stream):

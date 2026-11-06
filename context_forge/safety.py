@@ -71,9 +71,10 @@ def input_path(value: str, roots: list[str], excluded: list[Path] = ()) -> Path:
     if not within(path, roots) or any(path.is_relative_to(p.resolve()) for p in excluded):
         raise InputError("Input path is outside configured input roots or inside generated storage")
     relative = next(path.relative_to(local_path(root)) for root in roots if path.is_relative_to(local_path(root)))
-    if any(p.lower() in {".git", ".hermes", ".codex", ".ssh", ".aws", "node_modules", ".venv"} for p in relative.parts):
+    if any(p.lower() in {".git", ".hermes", ".codex", ".ssh", ".aws", ".gnupg", "node_modules", ".venv", "security", "secrets"} for p in relative.parts):
         raise InputError("Credential, agent configuration, and dependency directories are not intake sources")
-    if path.name.lower() in {"auth.json", "credentials.json", ".env"}:
+    if (path.name.lower() in {"auth.json", "credentials.json", ".env", "service-token.txt"}
+            or path.suffix.lower() in {".pem", ".key", ".pfx", ".p12", ".dpapi"}):
         raise InputError("Credential files are not intake sources")
     if not path.exists():
         raise InputError("Input path does not exist")

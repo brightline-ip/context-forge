@@ -273,13 +273,13 @@ class ExtractionSafetyTests(unittest.TestCase):
         source = self.root/'source.txt'
         source.write_text('mock data')
         pipeline = Pipeline(self.root, {'output_dir': str(self.root/'output')})
-        pipeline.slots.acquire()
-        pipeline.slots.acquire()
+        for _ in range(10):
+            pipeline.capacity.acquire()
         with self.assertRaises(BusyError):
             pipeline.create_job([source], 'test', False)
         self.assertEqual(pipeline.jobs(), [])
-        pipeline.slots.release()
-        pipeline.slots.release()
+        for _ in range(10):
+            pipeline.capacity.release()
 
     def test_restart_marks_incomplete_work_interrupted(self):
         pipeline = Pipeline(self.root, {'output_dir': str(self.root/'output')})

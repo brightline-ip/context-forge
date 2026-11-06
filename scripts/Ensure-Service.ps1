@@ -27,7 +27,14 @@ try {
     return
 } catch {
     $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
-    if ($listeners.Count) { throw 'A listener exists but authenticated Context Forge identity validation failed.' }
+    if ($listeners.Count) {
+        # A service that started moments ago may not answer yet; only a persistent mismatch is a failure.
+        Start-Sleep -Seconds 20
+        $status = Invoke-RestMethod -Uri $uri -Headers $headers -TimeoutSec 5
+        if ($status.service -ceq 'Context Forge' -and $status.agent_api_version -eq 1 -and
+            $status.security_revision -eq 3 -and $status.auth_required -eq $true -and $status.ok -eq $true) { return }
+        throw 'A listener exists but authenticated Context Forge identity validation failed.'
+    }
 }
 $env:CONTEXT_FORGE_TOKEN_FILE = $tokenPath
 & (Join-Path $root 'start.ps1') -HostAddress 127.0.0.1 -Port $Port

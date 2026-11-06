@@ -67,7 +67,7 @@ export class ContextForgeClient {
     try { value = JSON.parse(Buffer.concat(parts).toString('utf8')); }
     catch { throw new Error('Context Forge returned malformed JSON'); }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Context Forge returned an invalid response');
-    if (!response.ok) throw new Error(`Context Forge HTTP ${response.status}; inspect the job or service configuration`);
+    if (!response.ok) throw new Error(`Context Forge HTTP ${response.status}: ${typeof value.error === 'string' ? value.error.slice(0, 300) : 'inspect the job or service configuration'}`);
     return value;
   }
 
@@ -87,7 +87,7 @@ export class ContextForgeClient {
     try { value = JSON.parse(Buffer.concat(parts).toString('utf8')); }
     catch { throw new ContextForgeError('MALFORMED_RESPONSE', 'Context Forge returned malformed JSON'); }
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ContextForgeError('INVALID_RESPONSE', 'Context Forge returned an invalid response');
-    if (!response.ok) throw new ContextForgeError('UPLOAD_REJECTED', `Context Forge rejected the attachment upload (HTTP ${response.status})`);
+    if (!response.ok) throw new ContextForgeError('UPLOAD_REJECTED', `Context Forge rejected the attachment upload (HTTP ${response.status})${typeof value.error === 'string' ? ': ' + value.error.slice(0, 300) : ''}`);
     return value;
   }
 

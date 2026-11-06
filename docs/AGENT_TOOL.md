@@ -87,6 +87,28 @@ status record per page; `ocr.status` is `complete`, `incomplete` (pending pages)
 exposes no recognition confidence, so `confidence` is null on every page record.
 See [PDF OCR behavior and limits](PDF_OCR.md).
 
+Job files and document reads also carry `quality_tier`, the review a document
+needs: `ready`, `ocr_unverified` (OCR text, no problem found), `ocr_numbers_disputed`,
+`layout_review`, `ocr_problems` (blank or failed pages) or `incomplete` (pages pending).
+`quality_status` keeps its values for existing consumers. `ocr_numeric_check` lists
+numbers (dates, application numbers, citations) that Windows OCR and Tesseract read
+differently on recognized pages. It reports and never edits: a disagreement does not
+show which engine is right, and agreement does not prove a number correct. Only a
+conflict (similar numbers read differently, `conflicts` on the page record) sets
+`ocr_numbers_disputed`; a number one engine simply missed is listed but does not. Status
+`unavailable` means Tesseract is not installed; `partial` means pages ran out of budget.
+
+An extraction that times out is retried once automatically (OCR checkpoints make it
+resume), and the limit counts running time, not time the machine was asleep. HTTP
+error messages now reach callers with the service's reason. Rejected requests and
+retried extractions are recorded in `data/intake-audit.jsonl` (route, status and
+reason only; rotated at 5 MiB). A rejected request creates no job, so this is the only
+record of it. Service output goes to `data/service.log` however the service was started.
+
+Up to 2 jobs run at once and 8 more wait as `queued`; beyond that a submission gets
+HTTP 429. Manifests record `processing_seconds`. The number check caches Tesseract's text
+by source hash, so OCR continuations only read new pages (64 per call).
+
 The OCR interface includes `continue_pdf_ocr(document_id)` and
 `.\Context-Forge.ps1 -ContinueOcr DOCUMENT_ID` for one further batch. Use
 `complete_pdf_ocr(document_id, max_batches, timeout_seconds)` or

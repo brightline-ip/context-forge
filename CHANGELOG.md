@@ -17,3 +17,15 @@ First public preview.
 - OCR helper is launched with a process-scoped `-ExecutionPolicy Bypass` so OCR works under the default Restricted
   policy; web copy no longer mentions NAS shares (UNC paths are refused); SECURITY.md documents token ACL
   inheritance and unpinned-hash installs.
+
+## 0.1.0 (reliability and installer) — 2026-11-05
+
+- `Setup.cmd`: one-click Windows installer with Start Menu shortcuts and a clean uninstaller.
+- Second-engine number check: with Tesseract installed, dates and numbers the two OCR engines read differently are
+  reported (`ocr_numeric_check`, `quality_tier`). Reports only; never changes the text.
+- Extraction timeouts retry once and resume from OCR checkpoints; the limit counts running time, not sleep.
+- Up to 8 jobs wait while 2 run; beyond that HTTP 429. Client errors now carry the service's reason.
+- Rejected requests and retries are logged to `data/intake-audit.jsonl` (route, status, reason only); service output
+  goes to `data/service.log`.
+- More credential paths are refused as input (`security`, `secrets`, `.gnupg`, key files).
+- `uninstall.ps1` now recognizes its own running service.

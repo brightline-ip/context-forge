@@ -9,6 +9,9 @@ from .safety import InputError, MAX_TEXT_CHARS, safe_error, validate_file
 
 
 def main():
+    if len(sys.argv) == 5 and sys.argv[1] == '--numeric-check':
+        from .ocr_crosscheck import worker_main
+        return worker_main(*sys.argv[2:5])
     source, target = map(Path, sys.argv[1:3])
     checkpoint = Path(sys.argv[4]) if len(sys.argv) == 5 and sys.argv[3] == '--ocr-checkpoint' else None
     if len(sys.argv) != 3 and checkpoint is None:

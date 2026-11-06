@@ -20,6 +20,7 @@ from pathlib import Path
 from .extractors import SUPPORTED_EXTENSIONS, discover
 from .inline import normalize_inline
 from .pipeline import Pipeline
+from .audit import ServiceLog, append_event
 from .safety import (BusyError, InputError, MAX_FILES, MAX_UPLOAD_BYTES,
                      input_path, safe_error, validate_settings)
 
@@ -179,6 +180,10 @@ def handler_factory(app: App):
             return hmac.compare_digest(supplied.encode("utf-8"), app.token.encode("utf-8"))
 
         def json_response(self, value, status=200):
+            if status >= 400:
+                # The route's fixed prefix only: a document or job ID is not needed to see the pattern.
+                route = "/".join(urllib.parse.urlparse(self.path).path.split("/")[:3])
+                append_event(app.root / "data" / "intake-audit.jsonl", {"event": "request_rejected", "route": route, "status": status, "reason": value.get("error") if isinstance(value, dict) else None})
             if status >= 400 and self.command == "POST" and not getattr(self, "body_read", False):
                 length = self.headers.get("Content-Length", "")
                 if length.isdigit() and int(length) <= 2 * 1024 * 1024:
@@ -464,6 +469,10 @@ def main():
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost"}:
         parser.error("Only IPv4 loopback binding is supported; remote deployment requires a separate authenticated TLS integration")
+    log_path = args.data_root / "data" / "service.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    sys.stdout, sys.stderr = ServiceLog(log_path, sys.stdout), ServiceLog(log_path, sys.stderr)
+    print(json.dumps({"event": "service_starting", "pid": os.getpid()}), flush=True)
     # Acquire the port before recovering jobs, including during concurrent startup.
     server = ExclusiveHTTPServer((args.host, args.port), BaseHTTPRequestHandler)
     app = App(load_service_token(args.data_root), args.data_root,

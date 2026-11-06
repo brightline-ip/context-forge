@@ -27,12 +27,31 @@ call it), through a **PowerShell/Node command line**, or through a **local web p
   Time and language, Language and region, English (United States), Language options, Optical character recognition.
 - Python 3.12 or later (tested with 3.12).
 - Node.js 20 or later (tested with 24). Needed for the MCP server and command-line client, not for the HTTP service alone.
-- Internet access during `install.ps1` only, to download pinned packages from PyPI and npm.
+- Internet access during installation only, to download pinned packages from PyPI and npm.
+- Optional: [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki), a second engine that re-reads scanned pages and flags
+  dates and numbers the two engines read differently. It reports and never changes the text.
 - Optional: [Ollama](https://ollama.com/) on this machine for context-capsule enrichment (off by default).
 
-## Install
+## Install (easiest)
 
-From the folder where you unpacked the release, in PowerShell:
+1. Download the zip from the release page and check its SHA-256 against the value in the release notes:
+   `Get-FileHash .\context-forge-0.1.0.zip -Algorithm SHA256`
+2. Right-click the zip, **Extract All**, open the folder and double-click **Setup.cmd**. The script is not code-signed,
+   so Windows SmartScreen may warn you; choose More info, Run anyway only if the checksum matched.
+3. Setup checks for Python and Node.js and offers to install anything missing through Windows Package Manager. It
+   installs nothing without your yes, and it needs no Docker and no API key.
+
+It installs to `%LOCALAPPDATA%\Brightline\ContextForge`, starts the service, and adds **Open Context Forge**, **Stop
+Context Forge** and **Uninstall Context Forge** to the Start Menu. **Open Context Forge** copies your access token to the
+clipboard and opens the local page; paste the token when asked. To connect an AI assistant, merge the `MCP-setup.json` file
+Setup writes into your client's configuration. Running Setup again repairs or updates the installation and keeps your data.
+`Setup.cmd -DryRun` shows what it would do without changing anything.
+
+The service does not start with Windows; use **Open Context Forge** after a restart (AI assistants start it on demand).
+
+## Install from source
+
+From the folder where you unpacked or cloned the release, in PowerShell:
 
 ```powershell
 .\install.ps1
@@ -139,7 +158,7 @@ anywhere. There is no telemetry.
   spreadsheet calculated values may be missing. Always read the warnings in the manifest.
 - OCR is the Windows engine, English only, approximate, with no confidence scores. At most 64 new pages
   or 75 seconds per call; continue with `-ContinueOcr` / `-CompleteOcr`. OCR text is marked as needing review.
-- Single-user, single-machine. At most 2 active jobs, 50 MiB per file. See [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/PDF_OCR.md](docs/PDF_OCR.md).
+- Single-user, single-machine. Up to 2 jobs run at once and 8 more wait; 50 MiB per file. See [docs/OPERATIONS.md](docs/OPERATIONS.md) and [docs/PDF_OCR.md](docs/PDF_OCR.md).
 - Public preview: clean-machine installation and long-term upgrade paths have not been verified.
 
 ## Optional: Hermes plugin
@@ -156,6 +175,10 @@ node integrations\mcp\verify.mjs
 ```
 
 ## Uninstall
+
+If you used Setup.cmd: Start Menu, **Uninstall Context Forge**. It asks whether to delete your data as well.
+
+If you installed from source:
 
 ```powershell
 .\uninstall.ps1            # removes .venv, node_modules, the optional scheduled task; keeps your data

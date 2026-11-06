@@ -7,7 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ['install.ps1', 'uninstall.ps1', 'Context-Forge.ps1', 'start.ps1', 'run-normalize.ps1',
-           'scripts/initialize-authentication.ps1', 'scripts/Ensure-Service.ps1', 'scripts/Install-ServiceTask.ps1']
+           'scripts/initialize-authentication.ps1', 'scripts/Ensure-Service.ps1', 'scripts/Install-ServiceTask.ps1',
+           'installer/common.ps1', 'installer/setup.ps1', 'installer/open.ps1', 'installer/stop.ps1', 'installer/remove.ps1']
 PARSE = ("$e=$null;$t=$null;[void][Management.Automation.Language.Parser]::ParseFile($env:CF_SCRIPT,[ref]$t,[ref]$e);"
          "if($e.Count){$e|%{$_.Message};exit 1}")
 
