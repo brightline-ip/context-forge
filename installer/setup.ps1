@@ -38,7 +38,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 $bundle = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
+$InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
 $paths = Get-CfPaths $InstallRoot
 $PowerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $SimulateMissing = @($SimulateMissing | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -105,7 +105,7 @@ try {
     $info = New-Object IO.DriveInfo($drive)
     # The service token and your documents rely on NTFS permissions.
     if ($info.DriveFormat -notin @('NTFS', 'ReFS')) { throw "The install folder is on a $($info.DriveFormat) drive, which cannot restrict access to your documents and token. Choose an NTFS drive with -InstallRoot." }
-    if ($InstallRoot.Length -gt 120) { throw 'The install folder path is too long (OCR working folders need the room). Choose a shorter path with -InstallRoot.' }
+    if ($InstallRoot.Length -gt 80) { throw 'The install folder path is too long (OCR working folders need the room). Choose a shorter path with -InstallRoot.' }
     if ($info.AvailableFreeSpace -lt 2GB) { Write-Warn2 ("Only {0:N1} GB free on {1}. Allow at least 2 GB plus room for your documents." -f ($info.AvailableFreeSpace / 1GB), $drive) }
     Write-Good ('Windows ' + [Environment]::OSVersion.Version.ToString() + ', 64-bit')
 
@@ -146,10 +146,14 @@ try {
     # ---- 3. Port ------------------------------------------------------------------------------
     Write-Step 'Step 3 of 5: Checking the local port'
     $hadInstall = Test-Path -LiteralPath $paths.Marker -PathType Leaf
+    if (-not $hadInstall -and (Test-Path -LiteralPath $InstallRoot) -and (Get-ChildItem -LiteralPath $InstallRoot -Force | Select-Object -First 1)) {
+        throw "$InstallRoot already has files that Setup did not put there. Choose an empty folder with -InstallRoot."
+    }
+    $ownRunning = $hadInstall -and @(Get-CfServiceProcesses $InstallRoot).Count -gt 0
     if ($hadInstall -and -not $DryRun) {
         if (Stop-CfService $InstallRoot) { Write-Info 'Stopped the earlier installation so it can be updated (your data is kept).'; Start-Sleep -Seconds 2 }
     }
-    if (-not (Test-PortFree $Port)) {
+    if (-not ($DryRun -and $ownRunning) -and -not (Test-PortFree $Port)) {
         throw "Port $Port is already used by another program. Stop that program, or run Setup again with another port, for example: Setup.cmd -Port 18765"
     }
     Write-Good "Port $Port is free (this computer only)"
@@ -167,7 +171,7 @@ try {
     New-Item -ItemType Directory -Force -Path $paths.Logs | Out-Null
     if (-not $hadInstall) { Write-Utf8NoBom $paths.Marker "Context Forge install root. The uninstaller removes only folders that contain this file.`r`n" }
     if ($bundle -ine $InstallRoot) {
-        $null = & robocopy.exe $bundle $InstallRoot /E /XD .git .venv node_modules data output security logs __pycache__ /XF installer.json $script:CfMarker /NFL /NDL /NJH /NJS /NP
+        $null = & robocopy.exe $bundle $InstallRoot /MIR /XD .git .venv node_modules data output security logs __pycache__ /XF installer.json MCP-setup.json $script:CfMarker /NFL /NDL /NJH /NJS /NP
         if ($LASTEXITCODE -ge 8) { throw "Copying the program files failed (robocopy code $LASTEXITCODE)." }
     }
     # Clear the "downloaded from the Internet" mark on the copies this installation runs.
@@ -194,7 +198,7 @@ try {
     )
     Write-Good "Shortcuts created in $ShortcutFolder"
 
-    $config = [ordered]@{ version = '0.1.0'; port = $Port; shortcuts = @($shortcuts); shortcut_folder = $ShortcutFolder; input_roots = @($InputRoots | Where-Object { $_ }) }
+    $config = [ordered]@{ version = '0.1.0'; port = $Port; shortcuts = @($shortcuts); shortcut_folder = $ShortcutFolder }
     Write-Utf8NoBom $paths.Config ($config | ConvertTo-Json -Depth 4)
 
     $entry = [ordered]@{ command = $(if ($node) { $node.Exe } else { 'node' }); args = @((Join-Path $InstallRoot 'integrations\mcp\server.mjs')) }
@@ -202,8 +206,17 @@ try {
     $mcp = [ordered]@{ mcpServers = [ordered]@{ 'context-forge' = $entry } } | ConvertTo-Json -Depth 5
     Write-Utf8NoBom (Join-Path $InstallRoot 'MCP-setup.json') $mcp
 
+    # Saved in settings.json so a service started on demand by an AI assistant reads the same folders.
+    if ($InputRoots) {
+        $settingsPath = Join-Path $InstallRoot 'data\settings.json'
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $settingsPath) | Out-Null
+        $settings = if (Test-Path -LiteralPath $settingsPath) { Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json } else { New-Object PSObject }
+        $settings | Add-Member -NotePropertyName allowed_input_roots -NotePropertyValue @($InputRoots) -Force
+        Write-Utf8NoBom $settingsPath ($settings | ConvertTo-Json -Depth 4)
+    }
+
     if (-not $NoStart) {
-        if (-not (Start-CfService $InstallRoot $Port $config.input_roots)) { throw "Context Forge did not start. Details: $(Join-Path $InstallRoot 'data\service.log')" }
+        if (-not (Start-CfService $InstallRoot $Port)) { throw "Context Forge did not start. Details: $(Join-Path $InstallRoot 'data\service.log')" }
         Write-Good "Context Forge is running at http://127.0.0.1:$Port"
     }
 

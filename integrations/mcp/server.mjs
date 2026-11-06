@@ -13,7 +13,7 @@ function register(name, description, inputSchema, handler, readOnly = true) {
       const result = await handler(args);
       return {content: [{type: 'text', text: JSON.stringify(result)}], structuredContent: result};
     } catch (error) {
-      const value = {error: {code: error instanceof ContextForgeError ? error.code : 'CONTEXT_FORGE_ERROR', message: error instanceof ContextForgeError ? error.message : 'Context Forge request failed'}};
+      const value = {error: {code: error instanceof ContextForgeError ? error.code : 'CONTEXT_FORGE_ERROR', message: error instanceof ContextForgeError ? error.message : String(error?.message || 'Context Forge request failed').slice(0, 400)}};
       return {isError: true, content: [{type: 'text', text: JSON.stringify(value)}], structuredContent: value};
     }
   });

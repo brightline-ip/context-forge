@@ -6,7 +6,7 @@ The new JavaScript `normalizeBoundFile` method uses authenticated
 `POST /api/jobs/bound-path` with exactly `path`, `expected_sha256` and a lowercase
 64-hex `operation_key`. It accepts one allowed file, no folders, always disables
 enrichment and uses conservative lossless normalization. A configured service
-token is mandatory for this route even when legacy local APIs allow no token.
+token is mandatory for this route, as for every API route.
 
 The operation binding, job and file row commit in one transaction. Reusing an
 identical request returns the accepted job, including failed/interrupted jobs;
@@ -100,7 +100,7 @@ conflict (similar numbers read differently, `conflicts` on the page record) sets
 
 An extraction that times out is retried once automatically (OCR checkpoints make it
 resume), and the limit counts running time, not time the machine was asleep. HTTP
-error messages now reach callers with the service's reason. Rejected requests and
+error messages reach callers with the service's reason, through the command line and MCP tools alike. Rejected requests and
 retried extractions are recorded in `data/intake-audit.jsonl` (route, status and
 reason only; rotated at 5 MiB). A rejected request creates no job, so this is the only
 record of it. Service output goes to `data/service.log` however the service was started.
@@ -113,7 +113,7 @@ The OCR interface includes `continue_pdf_ocr(document_id)` and
 `.\Context-Forge.ps1 -ContinueOcr DOCUMENT_ID` for one further batch. Use
 `complete_pdf_ocr(document_id, max_batches, timeout_seconds)` or
 `.\Context-Forge.ps1 -CompleteOcr DOCUMENT_ID` to chain batches with a default
-64-page ceiling and a hard 128-page ceiling. It stops on lack of progress,
+64-page ceiling; `max_batches` allows at most 16 batches (1,024 pages). It stops on lack of progress,
 failure, timeout, or the caller's cap. Job file `status` reports whether processing
 ended; `quality_status` reports `ready`, `needs_ocr`, or `needs_review`. Committed
 page results are reused and earlier outputs remain intact. All attempted is not

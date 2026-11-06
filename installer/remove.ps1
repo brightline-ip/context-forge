@@ -19,14 +19,21 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $paths = Get-CfPaths $root
 
+function Remove-Links([string]$Path) {
+    # Walked by hand: Windows PowerShell's -Recurse can follow a junction into its target.
+    $item = Get-Item -LiteralPath $Path -Force
+    if (-not $item.PSIsContainer) { return }
+    foreach ($child in @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue)) {
+        if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            if ($child.PSIsContainer) { [IO.Directory]::Delete($child.FullName, $false) } else { [IO.File]::Delete($child.FullName) }
+        } elseif ($child.PSIsContainer) { Remove-Links $child.FullName }
+    }
+}
+
 function Remove-Tree([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     # Unlink junctions and symbolic links first, without following them, so a linked folder's target survives.
-    $links = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue |
-        Sort-Object { $_.FullName.Length } -Descending)
-    foreach ($link in $links) {
-        if ($link.PSIsContainer) { [IO.Directory]::Delete($link.FullName, $false) } else { [IO.File]::Delete($link.FullName) }
-    }
+    Remove-Links $Path
     if ((Get-Item -LiteralPath $Path -Force).PSIsContainer) {
         try { Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop } catch {}
         if (Test-Path -LiteralPath $Path) {

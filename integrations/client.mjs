@@ -100,12 +100,12 @@ export class ContextForgeClient {
     };
     try { await check(); return; }
     catch (error) {
-      if (error.cause?.code !== 'ECONNREFUSED' || this.baseUrl !== 'http://127.0.0.1:8765') throw error;
+      if (error.cause?.code !== 'ECONNREFUSED' || !/^http:\/\/127\.0\.0\.1:\d+$/.test(this.baseUrl)) throw error;
     }
     const python = this.environment.CONTEXT_FORGE_PYTHON || path.join(root, '.venv/Scripts/python.exe');
     const env = Object.fromEntries(Object.entries(this.environment).filter(([key]) => ['SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'PATH', 'USERPROFILE', 'CONTEXT_FORGE_TOKEN', 'CONTEXT_FORGE_TOKEN_FILE'].includes(key.toUpperCase())));
     if (!env.CONTEXT_FORGE_TOKEN && !env.CONTEXT_FORGE_TOKEN_FILE && this.tokenFile) env.CONTEXT_FORGE_TOKEN_FILE = this.tokenFile;
-    const child = spawn(python, ['-m', 'context_forge.server'], {cwd: root, env, detached: true, windowsHide: true, stdio: 'ignore'});
+    const child = spawn(python, ['-m', 'context_forge.server', '--port', new URL(this.baseUrl).port], {cwd: root, env, detached: true, windowsHide: true, stdio: 'ignore'});
     let startError;
     child.on('error', error => { startError = error; });
     child.unref();

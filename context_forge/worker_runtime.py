@@ -10,6 +10,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .safety import InputError
+
 POLICY_VERSION = "parser-worker-policy-v1"
 MEMORY_LIMIT_BYTES = 1024 ** 3
 WORKER_MODULE = "context_forge.extract_worker"
@@ -192,6 +194,8 @@ def read_json_output(path: Path, maximum_bytes: int) -> dict:
 
 def read_extraction_output(path: Path, maximum_bytes: int) -> dict:
     value = read_json_output(path, maximum_bytes)
+    if set(value) == {"error"} and isinstance(value["error"], str):
+        raise InputError(value["error"][:500])  # already made safe by the worker
     if not isinstance(value, dict) or set(value) != {"sections", "metadata", "warnings"}:
         raise WorkerRuntimeError("output_invalid")
     sections, metadata, warnings = value["sections"], value["metadata"], value["warnings"]

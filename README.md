@@ -81,6 +81,7 @@ Each run writes a new timestamped batch folder under `output\`. A file's folder 
 - `original.*`: the archived source bytes, with a verified SHA-256.
 - `normalized.md`: extracted text with source locators. Spacing and repeated lines are preserved.
 - `chunks.jsonl`: roughly 6,000-character chunks for model context or indexing.
+- `sections.json`: the extracted sections as structured data, used to validate the package.
 - `manifest.json`: provenance, hashes, metadata, warnings and OCR/enrichment status.
 - `context-capsule.json` / `.md`: only if optional enrichment was requested; a routing aid, never a substitute for the text.
 
@@ -136,7 +137,8 @@ Everything lives under the install directory unless you configure otherwise: `da
 database, settings, uploads, OCR checkpoints), `output\` (normalized batches and archived originals),
 `security\` (token). Originals, normalized text and OCR checkpoints contain your documents in plaintext;
 use an encrypted disk and keep the folder out of source control and shared sync. Nothing is sent
-anywhere. There is no telemetry.
+anywhere. There is no telemetry. A failed document's working copy is removed; a failed upload is kept under `data\uploads\` so you can
+retry it (see [docs/OPERATIONS.md](docs/OPERATIONS.md)).
 
 ## Security model
 

@@ -8,7 +8,7 @@ Path intake rejects the entire default `security` directory and any explicitly c
 
 ## Initialize without changing the running service
 
-`install.ps1` does this for you. To do it by hand, run these commands as the Windows account that will operate Context Forge, from the install directory. Stop any Context Forge listener first; the apply step refuses to run while port 8765 is listening.
+`install.ps1` does this for you. To do it by hand, run these commands as the Windows account that will operate Context Forge, from the install directory. Stop any Context Forge listener first; the apply step refuses to run while this installation's own service is running.
 
 ```powershell
 .\scripts\initialize-authentication.ps1

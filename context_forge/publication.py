@@ -4,16 +4,40 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import time
 from typing import Callable
 
 
 JOURNAL_SCHEMA_VERSION = 1
 STATES = {"RESERVED", "STAGED", "VALIDATED", "PUBLISHED", "FAILED", "CONFLICT", "RECONCILIATION_REQUIRED"}
 LEGACY_INTEGRITY_KEY = "_publication_legacy_integrity"
+LOCK_RETRIES = 4
+LOCK_RETRY_SECONDS = 0.5
 
 
 class PublicationError(RuntimeError):
     pass
+
+
+class PublicationBusyError(PublicationError):
+    """Files are briefly held by another program (antivirus, sync client); nothing is wrong with them."""
+
+
+def _replace_with_retry(source: Path, target: Path) -> None:
+    for attempt in range(LOCK_RETRIES * 2):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == LOCK_RETRIES * 2 - 1:
+                raise
+            time.sleep(LOCK_RETRY_SECONDS)
+
+
+def _fingerprint(directory: Path) -> tuple:
+    with os.scandir(directory) as entries:
+        return tuple(sorted((entry.name, entry.stat().st_size, entry.stat().st_mtime_ns) for entry in entries))
 
 
 def _encoded(value: dict) -> str:
@@ -90,6 +114,7 @@ class PublicationJournal:
         self.store = store
         self.output_root = output_root.resolve()
         self.validator = validator
+        self.validated_fingerprints = {}
         self.clock = clock
 
     def _paths(self, row: dict) -> tuple[Path, Path]:
@@ -132,6 +157,14 @@ class PublicationJournal:
                 row = db.execute("SELECT state FROM publication_journal WHERE publication_id=?", (publication_id,)).fetchone()
                 actual = row[0] if row else "missing"
                 raise PublicationError(f"publication transition {expected}->{state} refused from {actual}")
+
+    def discard_failed_staging(self, publication_id: str) -> None:
+        """A failed document's staging copy holds the original; it serves no later step."""
+        row = self._row(publication_id)
+        if row["state"] != "FAILED":
+            return
+        staging, _ = self._paths(row)
+        shutil.rmtree(staging, ignore_errors=True)
 
     def staged(self, publication_id: str) -> None:
         self.transition(publication_id, "RESERVED", "STAGED")
@@ -176,11 +209,16 @@ class PublicationJournal:
             if _digest(disk_manifest) != row["manifest_sha256"]:
                 raise PublicationError("manifest differs from validated journal record")
             self.validator(candidate, disk_manifest)
+        except OSError as exc:
+            if not isinstance(exc, (FileNotFoundError, NotADirectoryError)):
+                raise PublicationBusyError("publication files are temporarily locked") from exc
+            self.transition(publication_id, row["state"], "RECONCILIATION_REQUIRED", detail=str(exc)[:1000])
+            raise PublicationError("validated publication failed reconciliation") from exc
         except Exception as exc:
             self.transition(publication_id, row["state"], "RECONCILIATION_REQUIRED", detail=str(exc)[:1000])
             raise PublicationError("validated publication failed reconciliation") from exc
         if candidate == staging:
-            os.replace(staging, target)
+            _replace_with_retry(staging, target)
             self.validator(target, disk_manifest)
         stamp = self.clock()
         with self.store.lock, self.store.connect() as db:
@@ -261,6 +299,16 @@ class PublicationJournal:
                 raise PublicationError("legacy publication failed integrity validation") from exc
         if row["state"] != "PUBLISHED" or not row["manifest_json"]:
             raise PublicationError("publication is unavailable")
+        for attempt in range(LOCK_RETRIES):
+            try:
+                return self._check_published(row)
+            except PublicationBusyError:
+                if attempt == LOCK_RETRIES - 1:
+                    raise
+                time.sleep(LOCK_RETRY_SECONDS)
+
+    def _check_published(self, row: dict) -> dict:
+        publication_id = row["publication_id"]
         try:
             _, target = self._paths(row)
             stored = json.loads(row["manifest_json"])
@@ -277,8 +325,18 @@ class PublicationJournal:
                 return disk
             if _digest(disk) != row["manifest_sha256"]:
                 raise PublicationError("manifest binding mismatch")
-            self.validator(target, disk)
+            # Full hashing runs once per process until a file's size or time changes: job polls and
+            # chunk reads must not re-hash every original. A restart re-validates everything.
+            fingerprint = _fingerprint(target)
+            if self.validated_fingerprints.get(publication_id) != fingerprint:
+                self.validator(target, disk)
+                self.validated_fingerprints[publication_id] = fingerprint
             return stored
+        except OSError as exc:
+            if not isinstance(exc, (FileNotFoundError, NotADirectoryError)):
+                raise PublicationBusyError("publication files are temporarily locked") from exc
+            self._revoke(row, str(exc))
+            raise PublicationError("publication failed integrity validation") from exc
         except Exception as exc:
             self._revoke(row, str(exc))
             raise PublicationError("publication failed integrity validation") from exc

@@ -156,21 +156,25 @@ function Stop-CfService([string]$Root) {
     return $stopped
 }
 
-# Start with no window and no console shared with the caller, so closing a window does not stop it.
-# The service writes its own log to data\service.log.
-function Start-CfService([string]$Root, [int]$Port, [string[]]$InputRoots) {
+# Started through WMI: no window, and no console or output pipe shared with whatever ran Setup, so nothing
+# waits on the service and closing a window does not stop it. The service logs to data\service.log.
+function Start-CfService([string]$Root, [int]$Port) {
     $paths = Get-CfPaths $Root
     if (Test-CfReady $Port $paths.Token) { return $true }
     if (-not (Test-PortFree $Port)) { return $false }
-    $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName = $paths.Venv
-    $psi.Arguments = "-m context_forge.server --host 127.0.0.1 --port $Port"
-    $psi.WorkingDirectory = $Root
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.EnvironmentVariables['CONTEXT_FORGE_TOKEN_FILE'] = $paths.Token
-    if ($InputRoots) { $psi.EnvironmentVariables['CONTEXT_FORGE_INPUT_ROOTS'] = ($InputRoots -join ';') }
-    $null = [Diagnostics.Process]::Start($psi)
+    $environment = New-Object Collections.Generic.List[string]
+    foreach ($name in @('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'PATH', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'USERNAME', 'COMSPEC')) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ($value) { $environment.Add("$name=$value") }
+    }
+    $environment.Add("CONTEXT_FORGE_TOKEN_FILE=$($paths.Token)")
+    $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0; CreateFlags = [uint32]0x08000000; EnvironmentVariables = [string[]]$environment.ToArray() }
+    $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = "`"$($paths.Venv)`" -m context_forge.server --host 127.0.0.1 --port $Port"
+        CurrentDirectory = $Root
+        ProcessStartupInformation = $startup
+    }
+    if ($result.ReturnValue -ne 0) { return $false }
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline) {
         if (Test-CfReady $Port $paths.Token) { return $true }

@@ -85,8 +85,8 @@ is capped at eight million characters. Chunks are 1,000-12,000 characters and re
 return at most five chunks. Model replies are capped at 64 KiB, with at most one
 retry; external model endpoints, redirects and environment proxies are rejected.
 
-Child processes have a deadline, not an OS memory sandbox. Crafted compressed PDF
-streams can still cause peak memory pressure before the deadline. Do not ingest
+Child processes have a deadline and a 1 GiB Windows Job Object memory cap, but this is
+not a security sandbox. Do not ingest
 intentionally adversarial samples on your main machine. Use a disposable,
 low-privilege container or VM for such material.
 

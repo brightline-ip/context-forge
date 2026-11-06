@@ -27,8 +27,16 @@ client documents to a report; use synthetic files.
   allow rule. Review the install directory's ACL before relying on this.
 - **Supply chain.** `install.ps1` installs version-pinned Python and npm packages (`requirements-lock.txt`,
   `package-lock.json`); they are not hash-pinned. Review dependencies if your threat model includes a compromised
-  package index. The OCR helper script runs with `-ExecutionPolicy Bypass` for that one process only, from a fixed
-  path inside the install whose SHA-256 is recorded in the OCR configuration.
+  package index. The OCR helper script and the optional page renderer run with `-ExecutionPolicy Bypass` for that one
+  process only, from fixed paths inside the install; the OCR helper's SHA-256 is recorded in the OCR configuration.
+
+- **Shared machines.** Clients send the token to whatever listens on the configured port before checking that it is
+  Context Forge, so another program holding that port could capture it. The port is local to this computer; this is
+  one more reason not to run Context Forge where other people or untrusted programs share your account or machine.
+- **Clipboard.** The **Open Context Forge** shortcut puts the token on the clipboard. Clipboard history and cloud
+  clipboard sync, if you turned them on, may keep or copy it.
+- **Provenance in Markdown.** `normalized.md` marks sections with comments that a document's own text could imitate.
+  `chunks.jsonl` carries locators as structured data; treat it as the authoritative citation source.
 
 Documents are untrusted input. Parsing runs in a child process with a time limit and a memory cap, archives
 are checked for size and compression ratio, and path intake is restricted to allowed roots. This is not a

@@ -29,3 +29,16 @@ First public preview.
   goes to `data/service.log`.
 - More credential paths are refused as input (`security`, `secrets`, `.gnupg`, key files).
 - `uninstall.ps1` now recognizes its own running service.
+
+## 0.1.0 (pre-release review fixes) — 2026-11-05
+
+- A file briefly locked by antivirus or a sync client no longer marks a document as corrupted; only a missing or
+  changed file does. Publication retries a locked rename.
+- Job polls and chunk reads no longer re-hash every original; full validation runs once per service start and again
+  when a file's size or time changes.
+- The real reason for a failed document (encrypted, too many pages, unsupported) now reaches the caller.
+- AES-encrypted PDFs with an empty user password, typical of patent-office downloads, are read (`cryptography` added).
+- A failed document's working copy of the original is removed. Long file names are shortened for the output folder.
+- Setup saves `-InputRoots` in `data\settings.json`, so a service started on demand reads the same folders; on-demand
+  start also honours a non-default port; repair removes stale program files; Setup refuses a non-empty folder it did
+  not create; the service no longer holds Setup's output pipe open.

@@ -6,7 +6,7 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party components (installed separately by install.ps1 from PyPI and npm under their own licenses):
   Python: pypdf (BSD-3-Clause), python-docx (MIT), openpyxl (MIT), et_xmlfile (MIT), python-pptx (MIT),
           XlsxWriter (BSD-2-Clause), defusedxml (PSF-2.0), lxml (BSD-3-Clause), Pillow (MIT-CMU/HPND),
-          typing_extensions (PSF-2.0)
+          typing_extensions (PSF-2.0), cryptography (Apache-2.0 OR BSD-3-Clause), cffi (MIT), pycparser (BSD-3-Clause)
   Node:   @modelcontextprotocol/sdk (MIT), zod (MIT), and their dependencies as pinned in
           integrations/mcp/package-lock.json
 Check each package's license for the exact version you install.

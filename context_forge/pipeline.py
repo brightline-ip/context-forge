@@ -20,7 +20,8 @@ from .artifacts import (ARTIFACT_SCHEMA_VERSION, ArtifactIntegrityError, build_a
                         validate_artifacts, write_artifacts)
 from .normalize import normalize, salience_pack
 from .ocr_crosscheck import check_recognized_pages, conflict_pages
-from .publication import JOURNAL_SCHEMA_VERSION, PublicationError, PublicationJournal, atomic_write_json
+from .publication import (JOURNAL_SCHEMA_VERSION, PublicationBusyError, PublicationError, PublicationJournal,
+                          atomic_write_json)
 from .safety import BusyError, InputError, MAX_FILES, MAX_TEXT_CHARS, safe_error, validate_file
 from .worker_runtime import WorkerRuntimeError, read_extraction_output, run_extraction_worker
 
@@ -31,7 +32,8 @@ def now() -> str:
 
 def safe_name(value: str) -> str:
     cleaned = "".join(character if character.isalnum() or character in "-_. " else "_" for character in value).strip(" .")
-    return cleaned[:160] or "document"
+    # Short enough that batch folder + name + OCR scratch stay under the Windows path limit; the manifest keeps the full name.
+    return cleaned[:50].strip(" .") or "document"
 
 
 def sha256_file(path: Path) -> str:
@@ -303,6 +305,7 @@ class Pipeline:
             except Exception as exc:
                 message = safe_error(exc)
                 self.publications.fail(file_id, message)
+                self.publications.discard_failed_staging(file_id)
                 self.store.execute("UPDATE files SET status='failed',error=? WHERE job_id=? AND source=?", (message, job_id, str(source)))
                 self.store.execute("UPDATE jobs SET failed=failed+1,updated_at=? WHERE id=?", (now(), job_id))
                 corpus["documents"].append({"source": str(source), "status": "failed", "error": message})
@@ -471,6 +474,9 @@ class Pipeline:
             if item["status"] == "completed":
                 try:
                     self.publications.check_available(item["id"])
+                except PublicationBusyError:
+                    item["warnings"] = ["Files are briefly locked by another program; check again shortly."]
+                    continue
                 except PublicationError:
                     item["status"] = "reconciliation_required"
                     item["error"] = "Published artifacts failed integrity validation"
@@ -510,6 +516,8 @@ class Pipeline:
             raise InputError("Document is not completed; inspect its job")
         try:
             manifest = self.publications.check_available(document_id)
+        except PublicationBusyError as exc:
+            raise InputError("Document files are briefly locked by another program; try again shortly") from exc
         except PublicationError as exc:
             raise InputError("Document publication is unavailable; inspect its job") from exc
         manifest["quality_status"], manifest["quality_reasons"] = quality_status(manifest)

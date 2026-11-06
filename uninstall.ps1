@@ -11,7 +11,8 @@
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [switch]$RemoveData,
-    [string]$TaskName = 'Context Forge Service'
+    [string]$TaskName = 'Context Forge Service',
+    [int]$Port = 8765
 )
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($PSScriptRoot)
@@ -26,7 +27,7 @@ if ($task) {
     }
 }
 
-foreach ($listener in @(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue)) {
+foreach ($listener in @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
     # A venv python.exe starts the real interpreter as a child, so the listener's parent may be the venv Python.
     $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)" -ErrorAction SilentlyContinue
     $parent = if ($proc) { Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.ParentProcessId)" -ErrorAction SilentlyContinue } else { $null }
@@ -34,7 +35,7 @@ foreach ($listener in @(Get-NetTCPConnection -LocalPort 8765 -State Listen -Erro
     if ($owner) {
         if ($PSCmdlet.ShouldProcess("process $($owner.ProcessId)", 'Stop Context Forge service')) { $null = & taskkill.exe /PID $owner.ProcessId /T /F 2>&1 }
     } else {
-        Write-Warning 'Something else is listening on port 8765; it was not touched.'
+        Write-Warning "Something else is listening on port $Port; it was not touched."
     }
 }
 

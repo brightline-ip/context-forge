@@ -209,5 +209,10 @@ def validate_artifacts(directory: Path, metadata: dict) -> None:
                 raise ArtifactIntegrityError("chunk coverage does not reach section end")
     except ArtifactIntegrityError:
         raise
-    except (KeyError, TypeError, ValueError, UnicodeError, OSError, json.JSONDecodeError) as exc:
+    except OSError as exc:
+        # A file briefly held by antivirus or a sync client is not corruption; only a missing one is.
+        if not isinstance(exc, (FileNotFoundError, NotADirectoryError)):
+            raise
+        raise ArtifactIntegrityError("artifact package failed integrity validation") from exc
+    except (KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
         raise ArtifactIntegrityError("invalid artifact structure") from exc

@@ -9,3 +9,6 @@ typing_extensions==4.16.0
 et-xmlfile==2.0.0
 Pillow==12.3.0
 XlsxWriter==3.2.9
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.12

@@ -7,13 +7,13 @@ $code = 0
 try {
     $config = Read-CfConfig $root
     Write-Host 'Starting Context Forge...'
-    if (-not (Start-CfService $root ([int]$config.port) @($config.input_roots))) {
+    if (-not (Start-CfService $root ([int]$config.port))) {
         throw "Context Forge did not start. If port $($config.port) is used by another program, stop it. Log: $(Join-Path $root 'data\service.log')"
     }
     Set-Clipboard -Value (Read-CfToken $paths.Token)
     Start-Process "http://127.0.0.1:$($config.port)"
     Write-Host 'The page is opening. Your access token is on the clipboard: paste it into the page when asked.'
-    Write-Host 'Clipboard history (Win+V) may keep a copy; treat the token like a password.'
+    Write-Host 'Clipboard history (Win+V) and clipboard sync, if you turned them on, may keep a copy; treat the token like a password.'
     Start-Sleep -Seconds 6
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
