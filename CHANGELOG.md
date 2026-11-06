@@ -43,7 +43,7 @@ First public preview.
   start also honours a non-default port; repair removes stale program files; Setup refuses a non-empty folder it did
   not create; the service no longer holds Setup's output pipe open.
 
-## Unreleased — next version
+## 0.1.1 — 2026-11-06
 
 - OCR works with any English Windows language pack, not only en-US.
 - A slow OCR batch stops before the worker limit, so finished pages are kept instead of the whole call being lost.

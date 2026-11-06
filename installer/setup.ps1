@@ -90,7 +90,7 @@ function New-CfShortcut([string]$Name, [string]$Script, [string]$Description, [s
 $exit = 0
 try {
     Write-Host ''
-    Write-Host 'Context Forge - Setup (public preview 0.1.0)' -ForegroundColor White
+    Write-Host 'Context Forge - Setup (public preview 0.1.1)' -ForegroundColor White
     Write-Info 'Turns PDFs, Word, PowerPoint, Excel and other files into clean, traceable text on your own computer.'
     Write-Info "Install folder: $InstallRoot"
 
@@ -198,7 +198,7 @@ try {
     )
     Write-Good "Shortcuts created in $ShortcutFolder"
 
-    $config = [ordered]@{ version = '0.1.0'; port = $Port; shortcuts = @($shortcuts); shortcut_folder = $ShortcutFolder }
+    $config = [ordered]@{ version = '0.1.1'; port = $Port; shortcuts = @($shortcuts); shortcut_folder = $ShortcutFolder }
     Write-Utf8NoBom $paths.Config ($config | ConvertTo-Json -Depth 4)
 
     $entry = [ordered]@{ command = $(if ($node) { $node.Exe } else { 'node' }); args = @((Join-Path $InstallRoot 'integrations\mcp\server.mjs')) }

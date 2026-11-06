@@ -242,7 +242,7 @@ def handler_factory(app: App):
                 return self.json_response({
                     "service": "Context Forge", "agent_api_version": 1, "security_revision": SECURITY_REVISION,
                     "active_jobs": app.pipeline.active_jobs,
-                    "ok": True, "version": "0.1.0", "supported_extensions": sorted(SUPPORTED_EXTENSIONS),
+                    "ok": True, "version": "0.1.1", "supported_extensions": sorted(SUPPORTED_EXTENSIONS),
                     "output_dir": app.settings["output_dir"], "ollama_model": app.settings["ollama_model"],
                     "auth_required": True,
                 })

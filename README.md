@@ -1,6 +1,6 @@
 # Context Forge
 
-**Public preview 0.1.0** · Apache-2.0 · Windows 10/11 only · by Brightline IP
+**Public preview 0.1.1** · Apache-2.0 · Windows 10/11 only · by Brightline IP
 
 Context Forge turns messy documents into clean, traceable text that you and your AI tools can work
 with. Point it at PDFs, Word, PowerPoint, Excel, EPUB, HTML, CSV, JSON, Markdown or plain-text files
@@ -35,7 +35,7 @@ call it), through a **PowerShell/Node command line**, or through a **local web p
 ## Install (easiest)
 
 1. Download the zip from the release page and check its SHA-256 against the value in the release notes:
-   `Get-FileHash .\context-forge-0.1.0.zip -Algorithm SHA256`
+   `Get-FileHash .\context-forge-0.1.1.zip -Algorithm SHA256`
 2. Right-click the zip, **Extract All**, open the folder and double-click **Setup.cmd**. The script is not code-signed,
    so Windows SmartScreen may warn you; choose More info, Run anyway only if the checksum matched.
 3. Setup checks for Python and Node.js and offers to install anything missing through Windows Package Manager. It
