@@ -168,12 +168,11 @@ function Start-CfService([string]$Root, [int]$Port) {
         if ($value) { $environment.Add("$name=$value") }
     }
     $environment.Add("CONTEXT_FORGE_TOKEN_FILE=$($paths.Token)")
-    $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0; CreateFlags = [uint32]0x08000000; EnvironmentVariables = [string[]]$environment.ToArray() }
-    $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-        CommandLine = "`"$($paths.Venv)`" -m context_forge.server --host 127.0.0.1 --port $Port"
-        CurrentDirectory = $Root
-        ProcessStartupInformation = $startup
-    }
+    $startup = ([wmiclass]'Win32_ProcessStartup').CreateInstance()
+    $startup.ShowWindow = 0
+    $startup.CreateFlags = 8   # DETACHED_PROCESS: no console at all, so no terminal window can appear
+    $startup.EnvironmentVariables = [string[]]$environment.ToArray()
+    $result = ([wmiclass]'Win32_Process').Create("`"$($paths.Venv)`" -m context_forge.server --host 127.0.0.1 --port $Port", $Root, $startup)
     if ($result.ReturnValue -ne 0) { return $false }
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline) {
